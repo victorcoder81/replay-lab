@@ -14,6 +14,7 @@ Replay Lab parses the replay container, extracts end-of-game metadata, exports r
 - Experimental champion-death timestamps and victim identities.
 - Optional independent checks against saved Riot API match/timeline JSON.
 - Packet histograms, raw time-window exports and timing-correlation candidates.
+- Read-only executable preflight for static decoder-builder blockers.
 - Explicit separation of replay-derived records, imported API events and unverified hypotheses.
 
 ## Supported builds
@@ -48,6 +49,16 @@ The filename above is an example. Supply a real replay from one of the supported
 
 The experimental death decoder requires no API inputs. It infers victim identity from the observed champion entity allocation and metadata ordering, masks respawn-generation bits 8–15, and checks every participant's decoded death count against end-of-game metadata. This is a narrow empirical interpretation; the death packet's payload fields remain undecoded.
 
+## Diagnose full-decoder prerequisites
+
+```sh
+python replay_lab.py doctor --client-exe "/path/to/League of Legends.exe" --out ./preflight.json
+```
+
+This command checks PE file boundaries, fingerprints the executable, samples code-section entropy and counts visible packet type names. It does not launch or unpack the executable. Exit code `2` means that the combined evidence suggests packed/encrypted code that blocks the current static builder; `1` means invalid input or another inspection error. Exit code `0` means inspection completed without that specific finding, **not** that a gameplay decoder is available. Existing output files are preserved.
+
+The available 16.20 and 16.21 binaries both hit this blocker. Movement and spell support still needs exact-build decoder recovery and validation. See [DECODER_STATUS.md](DECODER_STATUS.md) for measurements and the remaining work. `doctor` is a diagnostic, not a movement/spell decoder.
+
 ### Cross-check with saved API data
 
 ```sh
@@ -79,7 +90,7 @@ Timing coincidence is not proof of packet semantics. The correlation report incl
 python -m unittest discover -s . -p "test_*.py" -v
 ```
 
-Seventeen automated tests cover both layouts, compression, invalid and truncated data, unknown versions, input/output preservation, reference mismatch, respawn generation and death-count checks.
+Twenty-four automated tests cover both layouts, compression, invalid and truncated data, unknown versions, input/output preservation, reference mismatch, respawn generation, death-count checks and executable preflight.
 
 The experimental death profiles were cross-checked on three local replay/API pairs: **197 of 197 victim/timestamp pairs matched**, with a maximum timestamp difference below 1.4 milliseconds. One replay was decoded without API input and checked separately afterward. This is limited empirical validation, not a universal correctness guarantee. See [VALIDATION.md](VALIDATION.md).
 

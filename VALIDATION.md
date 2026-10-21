@@ -2,9 +2,11 @@
 
 ## Automated tests
 
-17 tests exercise container and framing behavior, malformed inputs, output preservation, reference-data mismatch, empirical entity-generation mapping and death-count verification.
+24 tests exercise container and framing behavior, malformed inputs, output preservation, reference-data mismatch, empirical entity-generation mapping, death-count verification and executable preflight.
 
 The fixtures are synthetic. They contain no real players, replay payloads or game executable code.
+
+Seven executable-preflight tests cover combined packing signals, entropy-only and packet-name counterexamples, low-entropy data, malformed PE boundaries, overlapping section ranges, exclusive report creation and the blocked status code. They do not validate an unpacker or gameplay decoder.
 
 ## Local replay checks
 

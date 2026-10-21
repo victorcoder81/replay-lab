@@ -20,7 +20,7 @@ sys.path.insert(0, str(ROOT / 'vendor'))
 from rofllens import ReplayReader, RoflParseError
 from rofllens.models import ChunkRecord, STREAM_NAMES
 
-VERSION = '0.2.0'
+VERSION = '0.2.1'
 LAYOUTS = {'16.20.824.8524': (17, None), '16.21.829.8620': (18, 4)}
 DEATH_PROFILES = {
     '16.20.824.8524': {'protocol':'142cabd45e45d83f','deathOpcode':0x00a6,'skillOpcode':0x032a},
@@ -293,6 +293,10 @@ def main(argv=None):
     parser=argparse.ArgumentParser(description=__doc__)
     sub=parser.add_subparsers(dest='command',required=True)
     sub.add_parser('capabilities')
+    d=sub.add_parser('doctor',help='Inspect an executable for static decoder-builder blockers; does not enable gameplay decoding.')
+    d.add_argument('--client-exe',required=True,type=Path)
+    d.add_argument('--replay',type=Path)
+    d.add_argument('--out',type=Path,help='Write a new diagnostic JSON file; existing files are preserved.')
     p=sub.add_parser('analyze')
     p.add_argument('replay',type=Path);p.add_argument('--out',required=True,type=Path)
     p.add_argument('--match',type=Path);p.add_argument('--timeline',type=Path);p.add_argument('--riot-id')
@@ -300,6 +304,13 @@ def main(argv=None):
     p.add_argument('--tolerance',type=float,default=0.15)
     p.add_argument('--experimental-deaths',action='store_true',help='Enable the narrow, empirically validated death-marker profile; no movement or spell fields are decoded.')
     args=parser.parse_args(argv)
+    if args.command=='doctor':
+        from decoder_doctor import doctor
+        try:
+            return doctor(args)
+        except (ValueError,OSError,RoflParseError,struct.error) as e:
+            print(json.dumps({'error':str(e),'status':'failed'}),file=sys.stderr)
+            return 1
     if args.command=='capabilities':
         print(json.dumps({'version':VERSION,'containerBuilds':list(LAYOUTS),'verifiedGameplayDecoders':[],
             'experimentalProfiles':{v:{'kind':'champion_death_marker','scope':'timestamp and victim entity; metadata order mapping checked against death totals'} for v in DEATH_PROFILES},'offline':True},indent=2));return 0
