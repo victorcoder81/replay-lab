@@ -1,12 +1,20 @@
 # Replay Lab
 
-An offline research tool for League of Legends ROFL v2 files, with experimental death markers, 16.21 movement paths, item-update IDs and gold-balance samples.
+An offline research tool for League of Legends ROFL v2 files, with experimental death markers, 16.21 movement paths, item-update IDs, gold-balance samples and sparse champion health.
 
 Replay Lab parses the replay container, extracts end-of-game metadata, exports raw record windows and compares packet timestamps with saved Riot Match-v5 events. Its death-marker profiles recover a timestamp and victim entity/identity from replay records without requiring a running game client or an API connection.
 
-**Version 0.3.0 decodes experimental movement paths on exact build 16.21.829.8620, map 11.** These are waypoint updates, including NPCs, rather than continuous position tracks. Individual spell casts, cooldowns and health remain undecoded. Validation covers one movement replay and a small death-marker corpus.
+**Version 0.3.0 decodes experimental movement paths on exact build 16.21.829.8620, map 11.** These are waypoint updates, including NPCs, rather than continuous position tracks. Spell availability and team visibility remain unverified. Validation covers one movement replay and a small death-marker corpus.
 
 **Version 0.4.0 adds item-update prefixes and current-gold samples at those updates.** It does not reconstruct continuous gold/CS progression or classify all transactions. See [ITEM_DECODING.md](ITEM_DECODING.md) for the exact scope and validation on two replays.
+
+**Version 0.5.0 adds sparse champion health updates on exact build 16.21.829.8620.** All 27,366 state vectors across two replays matched the recovered native reader. See [HEALTH_DECODING.md](HEALTH_DECODING.md) for independent checks and limits.
+
+```sh
+python replay_lab.py analyze /path/to/EUW1-1234567890.rofl --experimental-health --out ./runs/health
+```
+
+Health rows contain only changed/present fields; an absent value is never zero. The tool checks champion allocation against skill markers and all ten final death totals before applying the champion schema. NPC health, shields, continuous health and team-specific vision remain unavailable.
 
 ## Capabilities
 
@@ -51,7 +59,7 @@ python replay_lab.py analyze /path/to/EUW1-1234567890.rofl --experimental-deaths
 
 The filename above is an example. Supply a real replay from one of the supported builds. Select a fresh output directory for each run; the tool preserves existing results and refuses output paths containing input files.
 
-The experimental death decoder requires no API inputs. It infers victim identity from the observed champion entity allocation and metadata ordering, masks respawn-generation bits 8–15, and checks every participant's decoded death count against end-of-game metadata. This is a narrow empirical interpretation; the death packet's payload fields remain undecoded.
+The experimental death decoder requires no API inputs. It infers victim identity from the observed champion entity allocation and metadata ordering, masks respawn-generation bits 8â€“15, and checks every participant's decoded death count against end-of-game metadata. This is a narrow empirical interpretation; the death packet's payload fields remain undecoded.
 
 ### Decode 16.21 movement
 

@@ -1,4 +1,6 @@
-# Movement and spell decoder status
+# Gameplay decoder status
+
+Version **0.5.0** adds standalone sparse champion health. See [HEALTH_DECODING.md](HEALTH_DECODING.md). Spell-cast fields are recovered in local research, but their coverage is incomplete; no complete spell-availability or team-vision decoder is included.
 
 Version **0.4.0** also adds standalone item-update prefixes and gold-balance samples at item-update times. On two 16.21 replays, all 517 item IDs, gold balances and adjacent numeric fields matched the recovered native reader. This is partial payload decoding, not a complete purchase or economy timeline. See [ITEM_DECODING.md](ITEM_DECODING.md).
 
@@ -8,7 +10,7 @@ Research checked on 2026-10-22. Version **0.3.0** adds an experimental, standalo
 
 The decoder recovers movement entity IDs, speeds and waypoint paths, including NPCs. On one local replay it parsed **31,033 packets into 113,425 paths**, matching every output row from a recovered native deserializer. Independent Riot timeline checks found **140/141** nearby first waypoints within 100 units, with median distance 19.24 units. The remaining comparison crosses a likely respawn boundary. See [VALIDATION.md](VALIDATION.md).
 
-These are waypoint updates, not complete continuous positions. The output preserves entity IDs without assigning champion identities. Do not use the death marker's generation-bit masking for movement: NPC IDs can collide under it. Movement support for 16.20, individual spell casts, health and cooldowns remains unavailable.
+These are waypoint updates, not complete continuous positions. The output preserves entity IDs without assigning champion identities. Do not use the death marker's generation-bit masking for movement: NPC IDs can collide under it. Movement support for 16.20, standalone spell casts, cooldown readiness and team visibility remain unavailable.
 
 ## Recovery evidence
 

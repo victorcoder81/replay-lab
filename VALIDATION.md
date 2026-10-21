@@ -2,7 +2,7 @@
 
 ## Automated tests
 
-43 tests exercise container and framing behavior, malformed inputs, output preservation, reference-data mismatch, empirical entity-generation mapping, death-count verification, executable preflight, movement and item-prefix decoding.
+50 tests exercise container and framing behavior, malformed inputs, output preservation, reference-data mismatch, empirical entity-generation mapping, death-count verification, executable preflight, movement, item-prefix and sparse-health decoding.
 
 The fixtures are synthetic. They contain no real players, replay payloads or game executable code.
 
@@ -26,7 +26,7 @@ These checks establish behavior on the tested files. They do not establish unive
 
 ## Empirical interpretation
 
-The profiles identify a per-victim marker associated with champion deaths. Its header timestamp and entity parameter are used; the five-byte payload is not interpreted. Entity identity is inferred using a contiguous champion allocation, normalization of generation bits 8–15, and metadata participant order. All ten participants' final death counts must match.
+The profiles identify a per-victim marker associated with champion deaths. Its header timestamp and entity parameter are used; the five-byte payload is not interpreted. Entity identity is inferred using a contiguous champion allocation, normalization of generation bits 8â€“15, and metadata participant order. All ten participants' final death counts must match.
 
 When API references are supplied, metadata order must also agree with API participant IDs, and every recovered marker must match a reference victim/timestamp within the configured tolerance.
 
@@ -51,3 +51,7 @@ On one full local replay:
 The shipped decoder preserves entity IDs and does **not** assign participant identities. The validation's exact initial-ID rule is an empirical comparison for this file. Generation-bit masking is unsafe for movement records because NPC IDs can collide under it.
 
 Paths include NPCs and describe waypoint updates, not a complete continuous position trace. Map offsets and compact path structure were adapted from RoflLens. Signed byte deltas follow the separately inspected rofl-parser implementation, correcting a difference in the RoflLens helper. The count uses the low byte: the corpus also contains 593 records with high flags `0x0200`, which must not be treated as part of the waypoint count. Raw `recordFlags` are preserved; their additional semantics remain unknown. Native-oracle agreement establishes byte-level agreement with the recovered routine; independent API checks provide limited semantic evidence for first waypoints. Later waypoint semantics have not been independently checked against client playback. Additional replay files, discontinuities, modes and entity lifecycle cases remain unvalidated. Spell casts, health and cooldowns are not decoded.
+
+## Health, version 0.5.0
+
+All 27,366 native state vectors across two full replays match the standalone transform, with no structural parsing errors. Seven synthetic tests cover sparse updates, exact entity filtering, zero/escaped floats, NPC schema exclusion, unknown groups and suffixes, malformed records, nonfinite/range checks, excessive vectors and profile rejection. Independent Riot snapshot checks and timestamp caveats are documented in [HEALTH_DECODING.md](HEALTH_DECODING.md).
