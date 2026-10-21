@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+.env.*
+*.rofl
+*.exe
+*.dll
+*.jsonl
+*.part
+runs/
+data/
+examples/
+artifacts/
+.rofl-cache/
+decoder-cache/
