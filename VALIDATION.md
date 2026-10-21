@@ -2,7 +2,7 @@
 
 ## Automated tests
 
-50 tests exercise container and framing behavior, malformed inputs, output preservation, reference-data mismatch, empirical entity-generation mapping, death-count verification, executable preflight, movement, item-prefix and sparse-health decoding.
+64 tests exercise container and framing behavior, malformed inputs, output preservation, reference-data mismatch, empirical entity-generation mapping, death-count verification, executable preflight, movement, item-prefix, sparse-health, cooldown-report and team-visibility decoding.
 
 The fixtures are synthetic. They contain no real players, replay payloads or game executable code.
 
@@ -55,3 +55,7 @@ Paths include NPCs and describe waypoint updates, not a complete continuous posi
 ## Health, version 0.5.0
 
 All 27,366 native state vectors across two full replays match the standalone transform, with no structural parsing errors. Seven synthetic tests cover sparse updates, exact entity filtering, zero/escaped floats, NPC schema exclusion, unknown groups and suffixes, malformed records, nonfinite/range checks, excessive vectors and profile rejection. Independent Riot snapshot checks and timestamp caveats are documented in [HEALTH_DECODING.md](HEALTH_DECODING.md).
+
+## Cooldown and visibility, version 0.6.0
+
+All 9,342 cooldown records on three replays match the native scalar outputs and consume the full payload. All 3,499 champion visibility reports on two replays match the native team-byte output. Visible/hidden interpretation additionally has one human-confirmed sequence under blue-team fog of war on the independent MF win. These checks have different scopes: native scalar agreement does not establish every field's meaning, and one visual sequence does not validate every vision mechanic. Fourteen additional synthetic tests bring the total to 64. See [COOLDOWNS_AND_VISION.md](COOLDOWNS_AND_VISION.md).

@@ -20,7 +20,7 @@ sys.path.insert(0, str(ROOT / 'vendor'))
 from rofllens import ReplayReader, RoflParseError
 from rofllens.models import ChunkRecord, STREAM_NAMES
 
-VERSION = '0.5.0'
+VERSION = '0.6.0'
 LAYOUTS = {'16.20.824.8524': (17, None), '16.21.829.8620': (18, 4)}
 DEATH_PROFILES = {
     '16.20.824.8524': {'protocol':'142cabd45e45d83f','deathOpcode':0x00a6,'skillOpcode':0x032a},
@@ -209,9 +209,13 @@ def format_time(seconds):
 def analyze(args):
     with LabReader.open(args.replay) as replay:
         reference = reference_data(replay,args.match,args.timeline,args.riot_id)
-        movement_profile = None; item_profile = None
-        health_entities = None; health_counts = Counter()
-        if args.experimental_health:
+        movement_profile = None; item_profile = None; cooldown_profile = None
+        cooldown_counts = Counter()
+        if args.experimental_cooldowns:
+            from cooldown_decoder import load_cooldown_profile, decode_cooldown
+            cooldown_profile = load_cooldown_profile(replay.header.client_version, replay.header.protocol_digest)
+        health_entities = None; vision_entities = None; health_counts = Counter(); vision_counts = Counter()
+        if args.experimental_health or args.experimental_vision:
             from health_decoder import require_profile, decode_health, OPCODE as HEALTH_OPCODE
             require_profile(replay.header.client_version, replay.header.protocol_digest)
             death_profile = DEATH_PROFILES[replay.header.client_version]
@@ -224,7 +228,12 @@ def analyze(args):
             decode_death_markers(markers, skill_entities, list(replay.metadata.participants), reference, args.tolerance)
             # Normalization is confined to the validated skill-marker prepass.
             # Health records themselves must contain these exact IDs.
-            health_entities = {entity & ~0xff00 for entity in skill_entities}
+            champion_entities = {entity & ~0xff00 for entity in skill_entities}
+            health_entities = champion_entities if args.experimental_health else None
+            if args.experimental_vision:
+                from visibility_decoder import require_visibility_profile, decode_visibility, OPCODES as VISION_OPCODES
+                require_visibility_profile(replay.header.client_version, replay.header.protocol_digest)
+                vision_entities = champion_entities
         if args.experimental_items:
             from item_decoder import load_item_profile, decode_item_prefix
             item_profile=load_item_profile(replay.header.client_version,replay.header.protocol_digest)
@@ -246,6 +255,10 @@ def analyze(args):
         death_rows=[];entities=set()
         sample_file = None; movement_counts = Counter(); item_counts = Counter()
         with ExitStack() as stack:
+            if vision_entities is not None:
+                vision_file = stack.enter_context((output/'replay-team-visibility.jsonl').open('w',encoding='utf8'))
+            if cooldown_profile:
+                cooldown_file = stack.enter_context((output/'replay-cooldown-updates.jsonl').open('w',encoding='utf8'))
             if health_entities is not None:
                 health_file = stack.enter_context((output/'replay-health-updates.jsonl').open('w',encoding='utf8'))
             if item_profile:
@@ -254,12 +267,27 @@ def analyze(args):
                 movement_file = stack.enter_context((output/'replay-movement-paths.jsonl').open('w',encoding='utf8'))
             if args.window:
                 sample_file = stack.enter_context((output/'raw-window.jsonl').open('w',encoding='utf8'))
-            for block in replay.iter_blocks(include_payload=bool(args.window or movement_profile or item_profile or health_entities is not None),verify=True):
+            for block in replay.iter_blocks(include_payload=bool(args.window or movement_profile or item_profile or cooldown_profile or health_entities is not None or vision_entities is not None),verify=True):
                 counts[block.packet_id]+=1
                 stream_counts[block.stream]+=1
                 lengths[block.packet_id]+=block.payload_length
                 first=min(first,block.timestamp);last=max(last,block.timestamp)
                 if block.stream=='gameChunk':
+                    if vision_entities is not None and block.packet_id in VISION_OPCODES and block.param in vision_entities:
+                        fields = decode_visibility(block.payload, block.packet_id)
+                        vision_counts['reports'] += 1
+                        vision_file.write(json.dumps({'kind':'CHAMPION_TEAM_VISIBILITY_REPORT',
+                            'provenance':'rofl_payload_exact_build_profile', 'confidence':'experimental',
+                            'timestampSeconds':block.timestamp, 'packetId':block.packet_id,
+                            'chunkId':block.chunk_id, 'blockOffset':block.block_offset,
+                            'entityId':block.param, **fields})+'\n')
+                    if cooldown_profile and block.packet_id == cooldown_profile['opcode']:
+                        fields = decode_cooldown(block.payload, cooldown_profile)
+                        cooldown_counts['updates'] += 1
+                        cooldown_file.write(json.dumps({'kind':'SPELL_COOLDOWN_UPDATE',
+                            'provenance':'rofl_payload_exact_build_profile', 'confidence':'experimental',
+                            'timestampSeconds':block.timestamp, 'packetId':block.packet_id,
+                            'entityId':block.param, **fields})+'\n')
                     if health_entities is not None and block.packet_id == HEALTH_OPCODE:
                         health_updates, health_prefix = decode_health(block.payload, health_entities)
                         health_counts['packets'] += 1
@@ -328,6 +356,19 @@ def analyze(args):
                     'participantIdentityAssigned':False, 'npcHealthDecoded':False,
                     'continuousHealth':False, 'teamVisibility':'unknown', 'payloadFullyDecoded':False}})
             summary['gameplayDecoding']['decodedGameplayEvents'] = len(decoded)+movement_counts['paths']+item_counts['updates']+health_counts['updates']
+        if cooldown_profile:
+            summary['gameplayDecoding'].update({'status':'limited_experimental', 'cooldownUpdatesDecoded':True,
+                'cooldowns':{'counts':dict(cooldown_counts), 'scope':'explicit cooldown timer reports',
+                    'spellCastability':'unknown', 'castCoverageComplete':False, 'chargesDecoded':False,
+                    'participantIdentityAssigned':False, 'projection':False}})
+            summary['gameplayDecoding']['decodedGameplayEvents'] = len(decoded)+movement_counts['paths']+item_counts['updates']+health_counts['updates']+cooldown_counts['updates']
+        if vision_entities is not None:
+            summary['gameplayDecoding'].update({'status':'limited_experimental', 'teamVisibilityReportsDecoded':True,
+                'vision':{'counts':dict(vision_counts), 'scope':'explicit champion object visibility reports per team',
+                    'initialState':'unknown', 'interpretationValidation':'one human-checked sequence',
+                    'personalLineOfSight':'unknown', 'wardMapDecoded':False,
+                    'playerAttentionDecoded':False, 'participantIdentityAssigned':False}})
+            summary['gameplayDecoding']['decodedGameplayEvents'] = len(decoded)+movement_counts['paths']+item_counts['updates']+health_counts['updates']+cooldown_counts['updates']+vision_counts['reports']
         write_json(output/'summary.json',summary)
         write_json(output/'participants.json',list(replay.metadata.participants))
         write_json(output/'packet-histogram.json',histogram)
@@ -341,10 +382,16 @@ def analyze(args):
                 pid=reference['player']['participantId']
                 deaths=[e for e in reference['events'] if e['event']['type']=='CHAMPION_KILL' and e['event']['victimId']==pid]
         lines=[f'# Replay Lab: {replay.path.stem}','',f'Build **{replay.header.client_version}**. Parsed **{len(chunks)} chunks** and **{sum(stream_counts.values()):,} transport records** through {format_time(last)}.',
-            '', '**Gameplay decoder status: '+('limited experimental' if profile or movement_profile or item_profile or health_entities is not None else 'unavailable')+'.** Spell availability and team visibility remain unverified.',
+            '', '**Gameplay decoder status: '+('limited experimental' if profile or movement_profile or item_profile or cooldown_profile or health_entities is not None or vision_entities is not None else 'unavailable')+'.** Spell castability remains unverified; team visibility has limited visual validation.',
             '', 'All chunk sizes and the final container boundary were checked. The cryptographic replay signature was not verified. Original replay files are opened read-only.',
             '', '## Extracted data', '', '- Final participant stats are in `participants.json`.', '- Timestamp and opcode counts are in `summary.json` and `packet-histogram.json`.',
             '- Timing candidates are research hypotheses, not recovered gameplay events.']
+        if vision_entities is not None:
+            lines += ['', f'Experimental vision profile decoded **{vision_counts["reports"]:,} champion team-visibility reports**.',
+                'Initial state is unknown. Repeated visible/hidden reports are setters, not toggles. Interpretation has one human-checked visual sequence; player attention, ward maps and personal line of sight remain unknown.']
+        if cooldown_profile:
+            lines += ['', f'Experimental cooldown profile decoded **{cooldown_counts["updates"]:,} explicit timer reports**.',
+                'A zero timer does not establish castability: charges, resources and control effects are not decoded. Missing reports are not evidence that a spell was unused.']
         if health_entities is not None:
             lines += ['', f'Experimental health profile decoded **{health_counts["updates"]:,} sparse champion health updates** from **{health_counts["packets"]:,} packets**.',
                 'Each row contains only fields present in that update. Absent fields are unknown/unchanged, never zero. Do not interpolate these into exact continuous health or infer team visibility.']
@@ -386,6 +433,8 @@ def main(argv=None):
     p.add_argument('--tolerance',type=float,default=0.15)
     p.add_argument('--experimental-deaths',action='store_true',help='Enable the narrow, empirically validated death-marker profile.')
     p.add_argument('--experimental-movement',action='store_true',help='Decode experimental 16.21 waypoint paths; requires map 11 from --map-id or API match.')
+    p.add_argument('--experimental-vision',action='store_true',help='Decode experimental team-specific champion visibility reports; requires champion identity gate and has limited visual validation.')
+    p.add_argument('--experimental-cooldowns',action='store_true',help='Decode explicit 16.21 cooldown timer reports; does not establish spell castability or continuous readiness.')
     p.add_argument('--experimental-health',action='store_true',help='Decode sparse 16.21 champion health updates after validating champion entity allocation and metadata death totals.')
     p.add_argument('--experimental-items',action='store_true',help='Decode partial 16.21 item-update prefixes, without classifying purchases or assigning identity.')
     p.add_argument('--map-id',type=int,help='Explicit map assertion for movement decoding without API match data; only 11 is supported.')
@@ -401,6 +450,8 @@ def main(argv=None):
         print(json.dumps({'version':VERSION,'containerBuilds':list(LAYOUTS),'verifiedGameplayDecoders':[],
             'experimentalProfiles':{v:{'kind':'champion_death_marker','scope':'timestamp and victim entity; metadata order mapping checked against death totals'} for v in DEATH_PROFILES},
             'experimentalMovement':{'build':'16.21.829.8620','mapId':11,'kind':'waypoint_paths','continuousPositions':False,'participantIdentityAssigned':False},
+            'experimentalVision':{'build':'16.21.829.8620','kind':'champion_team_visibility_reports','initialState':'unknown','validation':'limited_human_visual_sequence'},
+            'experimentalCooldowns':{'build':'16.21.829.8620','kind':'explicit_timer_reports','spellCastability':'unknown','chargesDecoded':False},
             'experimentalHealth':{'build':'16.21.829.8620','kind':'sparse_champion_health','teamVisibility':'unknown','continuousHealth':False},
             'experimentalItems':{'build':'16.21.829.8620','kind':'item_update_prefix','transactionsClassified':False,'payloadFullyDecoded':False},'offline':True},indent=2));return 0
     if not math.isfinite(args.tolerance) or not 0<args.tolerance<=1:
