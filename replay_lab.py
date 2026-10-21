@@ -20,7 +20,7 @@ sys.path.insert(0, str(ROOT / 'vendor'))
 from rofllens import ReplayReader, RoflParseError
 from rofllens.models import ChunkRecord, STREAM_NAMES
 
-VERSION = '0.2.1'
+VERSION = '0.3.0'
 LAYOUTS = {'16.20.824.8524': (17, None), '16.21.829.8620': (18, 4)}
 DEATH_PROFILES = {
     '16.20.824.8524': {'protocol':'142cabd45e45d83f','deathOpcode':0x00a6,'skillOpcode':0x032a},
@@ -114,7 +114,7 @@ def reference_data(replay, match_path, timeline_path, riot_id):
             if 'timestamp' in event:
                 events.append({'provenance':'riot_match_v5_timeline','timestampSeconds':event['timestamp']/1000,'event':event})
     events.sort(key=lambda e:e['timestampSeconds'])
-    return {'matchId':match_id,'events':events,'player':player,'participants':api_participants,'metadataOrderMatches':metadata_order_matches}
+    return {'matchId':match_id,'mapId':match['info']['mapId'],'events':events,'player':player,'participants':api_participants,'metadataOrderMatches':metadata_order_matches}
 
 def decode_death_markers(rows, entities, participants, reference=None, tolerance=0.15):
     """Narrow empirical decoder: header timestamp + victim entity, no payload fields.
@@ -209,6 +209,13 @@ def format_time(seconds):
 def analyze(args):
     with LabReader.open(args.replay) as replay:
         reference = reference_data(replay,args.match,args.timeline,args.riot_id)
+        movement_profile = None
+        if args.experimental_movement:
+            from movement_decoder import load_profile, decode_movement
+            map_id = reference['mapId'] if reference else args.map_id
+            if args.map_id is not None and map_id != args.map_id:
+                raise ValueError('--map-id differs from API match map.')
+            movement_profile = load_profile(replay.header.client_version,replay.header.protocol_digest,map_id)
         output = ensure_outputs_safe(args.replay,args.out,[args.match,args.timeline])
         chunks = list(replay.chunks())
         summary = replay.summary().as_dict()
@@ -219,16 +226,26 @@ def analyze(args):
         if profile and profile['protocol']!=replay.header.protocol_digest:
             raise ValueError('Death decoder protocol digest mismatch.')
         death_rows=[];entities=set()
-        sample_file = None
+        sample_file = None; movement_counts = Counter()
         with ExitStack() as stack:
+            if movement_profile:
+                movement_file = stack.enter_context((output/'replay-movement-paths.jsonl').open('w',encoding='utf8'))
             if args.window:
                 sample_file = stack.enter_context((output/'raw-window.jsonl').open('w',encoding='utf8'))
-            for block in replay.iter_blocks(include_payload=bool(args.window),verify=True):
+            for block in replay.iter_blocks(include_payload=bool(args.window or movement_profile),verify=True):
                 counts[block.packet_id]+=1
                 stream_counts[block.stream]+=1
                 lengths[block.packet_id]+=block.payload_length
                 first=min(first,block.timestamp);last=max(last,block.timestamp)
                 if block.stream=='gameChunk':
+                    if movement_profile and block.packet_id==movement_profile['opcode']:
+                        paths=decode_movement(block.payload,movement_profile)
+                        movement_counts['packets']+=1
+                        movement_counts['paths']+=len(paths)
+                        if not paths:movement_counts['emptyPackets']+=1
+                        for path in paths:
+                            movement_file.write(json.dumps({'kind':'MOVEMENT_PATH','provenance':'rofl_payload_exact_build_profile',
+                                'confidence':'experimental','timestampSeconds':block.timestamp,'packetId':block.packet_id,**path})+'\n')
                     times[block.packet_id].append(block.timestamp)
                     if profile and block.packet_id==profile['skillOpcode']:
                         entities.add(block.param)
@@ -255,6 +272,12 @@ def analyze(args):
                 'referenceEventsAreNotReplayDecodedEvents':True}
             with (output/'replay-death-markers.jsonl').open('w',encoding='utf8') as f:
                 for event in decoded:f.write(json.dumps(event,ensure_ascii=False)+'\n')
+        if movement_profile:
+            summary['gameplayDecoding'].update({'status':'limited_experimental','movementDecoded':True,
+                'decodedGameplayEvents':movement_counts['paths']+len(decoded),
+                'movement':{'kind':'waypoint_paths','counts':dict(movement_counts),'mapId':11,
+                    'continuousPositions':False,'participantIdentityAssigned':False,'profile':movement_profile['schema']},
+                'spellCastsDecoded':False})
         write_json(output/'summary.json',summary)
         write_json(output/'participants.json',list(replay.metadata.participants))
         write_json(output/'packet-histogram.json',histogram)
@@ -268,10 +291,13 @@ def analyze(args):
                 pid=reference['player']['participantId']
                 deaths=[e for e in reference['events'] if e['event']['type']=='CHAMPION_KILL' and e['event']['victimId']==pid]
         lines=[f'# Replay Lab: {replay.path.stem}','',f'Build **{replay.header.client_version}**. Parsed **{len(chunks)} chunks** and **{sum(stream_counts.values()):,} transport records** through {format_time(last)}.',
-            '', '**Gameplay decoder status: '+('limited experimental death markers' if profile else 'unavailable')+'.** Movement, spell casts and gameplay payload fields remain undecoded.',
+            '', '**Gameplay decoder status: '+('limited experimental' if profile or movement_profile else 'unavailable')+'.** Individual spell casts, health and cooldowns remain undecoded.',
             '', 'All chunk sizes and the final container boundary were checked. The cryptographic replay signature was not verified. Original replay files are opened read-only.',
             '', '## Extracted data', '', '- Final participant stats are in `participants.json`.', '- Timestamp and opcode counts are in `summary.json` and `packet-histogram.json`.',
             '- Timing candidates are research hypotheses, not recovered gameplay events.']
+        if movement_profile:
+            lines += ['',f'Experimental movement profile decoded **{movement_counts["paths"]:,} waypoint paths** from **{movement_counts["packets"]:,} packets**.',
+                'Paths include NPCs. Entity IDs are preserved without assigning champion identities. These are waypoint updates, not a complete continuous position trace.']
         if profile:
             lines+=['',f'Experimental death-marker profile produced **{len(decoded)} records** from replay timestamps and victim entities. Counts match all ten participants\' final death totals.',
                 'Identity mapping uses an empirical allocation/order rule. These checks do not prove the meaning of other payload fields.']
@@ -302,7 +328,9 @@ def main(argv=None):
     p.add_argument('--match',type=Path);p.add_argument('--timeline',type=Path);p.add_argument('--riot-id')
     p.add_argument('--window',nargs=2,type=float,metavar=('START_SECONDS','END_SECONDS'))
     p.add_argument('--tolerance',type=float,default=0.15)
-    p.add_argument('--experimental-deaths',action='store_true',help='Enable the narrow, empirically validated death-marker profile; no movement or spell fields are decoded.')
+    p.add_argument('--experimental-deaths',action='store_true',help='Enable the narrow, empirically validated death-marker profile.')
+    p.add_argument('--experimental-movement',action='store_true',help='Decode experimental 16.21 waypoint paths; requires map 11 from --map-id or API match.')
+    p.add_argument('--map-id',type=int,help='Explicit map assertion for movement decoding without API match data; only 11 is supported.')
     args=parser.parse_args(argv)
     if args.command=='doctor':
         from decoder_doctor import doctor
@@ -313,7 +341,8 @@ def main(argv=None):
             return 1
     if args.command=='capabilities':
         print(json.dumps({'version':VERSION,'containerBuilds':list(LAYOUTS),'verifiedGameplayDecoders':[],
-            'experimentalProfiles':{v:{'kind':'champion_death_marker','scope':'timestamp and victim entity; metadata order mapping checked against death totals'} for v in DEATH_PROFILES},'offline':True},indent=2));return 0
+            'experimentalProfiles':{v:{'kind':'champion_death_marker','scope':'timestamp and victim entity; metadata order mapping checked against death totals'} for v in DEATH_PROFILES},
+            'experimentalMovement':{'build':'16.21.829.8620','mapId':11,'kind':'waypoint_paths','continuousPositions':False,'participantIdentityAssigned':False},'offline':True},indent=2));return 0
     if not math.isfinite(args.tolerance) or not 0<args.tolerance<=1:
         parser.error('--tolerance must be greater than zero and at most one second.')
     if args.window and (not all(math.isfinite(x) for x in args.window) or args.window[0]<0 or args.window[1]<args.window[0]):
