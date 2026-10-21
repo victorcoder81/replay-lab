@@ -23,6 +23,7 @@ Health rows contain only changed/present fields; an absent value is never zero. 
 - End-of-game participant statistics, items, runes and spell-use totals.
 - Experimental champion-death timestamps and victim identities.
 - Experimental movement entity IDs, speeds and waypoints; no executable or API key needed.
+- Experimental sparse champion current/max health, with missing fields preserved.
 - Experimental item IDs and reported gold balances at item-update timestamps, with unknown packet suffixes explicit.
 - Optional independent checks against saved Riot API match/timeline JSON.
 - Packet histograms, raw time-window exports and timing-correlation candidates.
@@ -59,7 +60,7 @@ python replay_lab.py analyze /path/to/EUW1-1234567890.rofl --experimental-deaths
 
 The filename above is an example. Supply a real replay from one of the supported builds. Select a fresh output directory for each run; the tool preserves existing results and refuses output paths containing input files.
 
-The experimental death decoder requires no API inputs. It infers victim identity from the observed champion entity allocation and metadata ordering, masks respawn-generation bits 8â€“15, and checks every participant's decoded death count against end-of-game metadata. This is a narrow empirical interpretation; the death packet's payload fields remain undecoded.
+The experimental death decoder requires no API inputs. It infers victim identity from the observed champion entity allocation and metadata ordering, masks respawn-generation bits 8–15, and checks every participant's decoded death count against end-of-game metadata. This is a narrow empirical interpretation; the death packet's payload fields remain undecoded.
 
 ### Decode 16.21 movement
 
@@ -109,6 +110,7 @@ Add `--window 1709 1711` to export raw game-chunk records between 28:29 and 28:3
 | `replay-death-markers.jsonl` | Experimental replay-derived death markers, when enabled and checks pass |
 | `replay-movement-paths.jsonl` | Experimental replay-derived entity IDs, speeds and waypoint paths, when enabled |
 | `replay-item-updates.jsonl` | Partial item-update records and gold-balance samples, when enabled; transaction types remain unknown |
+| `replay-health-updates.jsonl` | Sparse champion current/max health updates, when enabled |
 | `packet-histogram.json` | Packet counts and payload sizes |
 | `timing-candidates.json` | Unverified packet/event timing correlations |
 | `api-reference-events.jsonl` | Imported API reference events, if supplied |
@@ -122,7 +124,7 @@ Timing coincidence is not proof of packet semantics. The correlation report incl
 python -m unittest discover -s . -p "test_*.py" -v
 ```
 
-Forty-three automated tests cover transport, executable preflight, death markers, movement, item prefixes, gold/numeric selectors, malformed data and output preservation. Fixtures contain no personal replay payloads or client code.
+Fifty automated tests cover transport, executable preflight, death markers, movement, sparse health, item prefixes, gold/numeric selectors, malformed data and output preservation. Fixtures contain no personal replay payloads or client code.
 
 The 16.21 movement decoder parsed **31,033 packets into 113,425 paths** on one local replay. An independent API comparison found **140/141** first waypoints within 100 game units at timestamps within 0.25 seconds; median distance was 19.24 units. The outlier crosses a likely respawn boundary. See [VALIDATION.md](VALIDATION.md) for scope and native-oracle checks.
 

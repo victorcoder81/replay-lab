@@ -26,7 +26,7 @@ These checks establish behavior on the tested files. They do not establish unive
 
 ## Empirical interpretation
 
-The profiles identify a per-victim marker associated with champion deaths. Its header timestamp and entity parameter are used; the five-byte payload is not interpreted. Entity identity is inferred using a contiguous champion allocation, normalization of generation bits 8â€“15, and metadata participant order. All ten participants' final death counts must match.
+The profiles identify a per-victim marker associated with champion deaths. Its header timestamp and entity parameter are used; the five-byte payload is not interpreted. Entity identity is inferred using a contiguous champion allocation, normalization of generation bits 8–15, and metadata participant order. All ten participants' final death counts must match.
 
 When API references are supplied, metadata order must also agree with API participant IDs, and every recovered marker must match a reference victim/timestamp within the configured tolerance.
 
