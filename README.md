@@ -1,10 +1,12 @@
 # Replay Lab
 
-An offline research tool for League of Legends ROFL v2 files, with experimental champion death markers and 16.21 movement waypoint decoding.
+An offline research tool for League of Legends ROFL v2 files, with experimental death markers, 16.21 movement paths, item-update IDs and gold-balance samples.
 
 Replay Lab parses the replay container, extracts end-of-game metadata, exports raw record windows and compares packet timestamps with saved Riot Match-v5 events. Its death-marker profiles recover a timestamp and victim entity/identity from replay records without requiring a running game client or an API connection.
 
 **Version 0.3.0 decodes experimental movement paths on exact build 16.21.829.8620, map 11.** These are waypoint updates, including NPCs, rather than continuous position tracks. Individual spell casts, cooldowns and health remain undecoded. Validation covers one movement replay and a small death-marker corpus.
+
+**Version 0.4.0 adds item-update prefixes and current-gold samples at those updates.** It does not reconstruct continuous gold/CS progression or classify all transactions. See [ITEM_DECODING.md](ITEM_DECODING.md) for the exact scope and validation on two replays.
 
 ## Capabilities
 
@@ -13,6 +15,7 @@ Replay Lab parses the replay container, extracts end-of-game metadata, exports r
 - End-of-game participant statistics, items, runes and spell-use totals.
 - Experimental champion-death timestamps and victim identities.
 - Experimental movement entity IDs, speeds and waypoints; no executable or API key needed.
+- Experimental item IDs and reported gold balances at item-update timestamps, with unknown packet suffixes explicit.
 - Optional independent checks against saved Riot API match/timeline JSON.
 - Packet histograms, raw time-window exports and timing-correlation candidates.
 - Read-only executable preflight for static decoder-builder blockers.
@@ -60,6 +63,14 @@ python replay_lab.py analyze /path/to/EUW1-1234567890.rofl --experimental-moveme
 
 Output preserves entity IDs without assigning player identities. Do not apply the death marker's generation-bit masking to these records: NPC IDs can collide under that transformation. Waypoint paths are useful for movement research, but reliable continuous positions, spell interactions and automatic coaching require further work.
 
+### Decode 16.21 item updates and gold samples
+
+```sh
+python replay_lab.py analyze /path/to/EUW1-1234567890.rofl --experimental-items --out ./runs/items
+```
+
+This requires the exact 16.21 build and protocol, with no API inputs or client executable. It exports item IDs, gold balances at update time, raw header flags and an unverified numeric field. It parses a prefix of the packet, leaving suffix bytes uninterpreted. Unsupported known-prefix variants cause failure. Updates include automatic grants and transformations; they must not all be labeled purchases or summed as spending. Entity IDs are preserved without assigning player identities. See [ITEM_DECODING.md](ITEM_DECODING.md).
+
 ## Diagnose full-decoder prerequisites
 
 ```sh
@@ -89,6 +100,7 @@ Add `--window 1709 1711` to export raw game-chunk records between 28:29 and 28:3
 | `participants.json` | End-of-game replay metadata |
 | `replay-death-markers.jsonl` | Experimental replay-derived death markers, when enabled and checks pass |
 | `replay-movement-paths.jsonl` | Experimental replay-derived entity IDs, speeds and waypoint paths, when enabled |
+| `replay-item-updates.jsonl` | Partial item-update records and gold-balance samples, when enabled; transaction types remain unknown |
 | `packet-histogram.json` | Packet counts and payload sizes |
 | `timing-candidates.json` | Unverified packet/event timing correlations |
 | `api-reference-events.jsonl` | Imported API reference events, if supplied |
@@ -102,7 +114,7 @@ Timing coincidence is not proof of packet semantics. The correlation report incl
 python -m unittest discover -s . -p "test_*.py" -v
 ```
 
-Thirty-four automated tests cover both layouts, compression, malformed inputs, profile scope, movement headers, vector ordering, compact paths, output preservation, references, death markers and executable preflight.
+Forty-three automated tests cover transport, executable preflight, death markers, movement, item prefixes, gold/numeric selectors, malformed data and output preservation. Fixtures contain no personal replay payloads or client code.
 
 The 16.21 movement decoder parsed **31,033 packets into 113,425 paths** on one local replay. An independent API comparison found **140/141** first waypoints within 100 game units at timestamps within 0.25 seconds; median distance was 19.24 units. The outlier crosses a likely respawn boundary. See [VALIDATION.md](VALIDATION.md) for scope and native-oracle checks.
 

@@ -1,5 +1,7 @@
 # Movement and spell decoder status
 
+Version **0.4.0** also adds standalone item-update prefixes and gold-balance samples at item-update times. On two 16.21 replays, all 517 item IDs, gold balances and adjacent numeric fields matched the recovered native reader. This is partial payload decoding, not a complete purchase or economy timeline. See [ITEM_DECODING.md](ITEM_DECODING.md).
+
 Research checked on 2026-10-22. Version **0.3.0** adds an experimental, standalone movement waypoint decoder for exact build **16.21.829.8620**, protocol **20e09df23c66b85e**, map **11**, opcode **0x0291**. Normal decoding requires neither a game executable nor an API connection.
 
 ## Working output

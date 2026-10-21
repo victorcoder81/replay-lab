@@ -2,9 +2,11 @@
 
 ## Automated tests
 
-34 tests exercise container and framing behavior, malformed inputs, output preservation, reference-data mismatch, empirical entity-generation mapping, death-count verification, executable preflight and movement decoding.
+43 tests exercise container and framing behavior, malformed inputs, output preservation, reference-data mismatch, empirical entity-generation mapping, death-count verification, executable preflight, movement and item-prefix decoding.
 
 The fixtures are synthetic. They contain no real players, replay payloads or game executable code.
+
+Nine item-prefix tests cover item and gold/numeric selectors, explicit partial status, truncation, overflow, scope, unsupported variants, nonfinite gold and unvalidated suffix bytes. Native/reference validation of the new fields is documented in [ITEM_DECODING.md](ITEM_DECODING.md).
 
 Seven executable-preflight tests cover combined packing signals, entropy-only and packet-name counterexamples, low-entropy data, malformed PE boundaries, overlapping section ranges, exclusive report creation and the blocked status code. They do not validate an unpacker or gameplay decoder.
 

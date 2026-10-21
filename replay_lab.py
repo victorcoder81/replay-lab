@@ -20,7 +20,7 @@ sys.path.insert(0, str(ROOT / 'vendor'))
 from rofllens import ReplayReader, RoflParseError
 from rofllens.models import ChunkRecord, STREAM_NAMES
 
-VERSION = '0.3.0'
+VERSION = '0.4.0'
 LAYOUTS = {'16.20.824.8524': (17, None), '16.21.829.8620': (18, 4)}
 DEATH_PROFILES = {
     '16.20.824.8524': {'protocol':'142cabd45e45d83f','deathOpcode':0x00a6,'skillOpcode':0x032a},
@@ -209,7 +209,10 @@ def format_time(seconds):
 def analyze(args):
     with LabReader.open(args.replay) as replay:
         reference = reference_data(replay,args.match,args.timeline,args.riot_id)
-        movement_profile = None
+        movement_profile = None; item_profile = None
+        if args.experimental_items:
+            from item_decoder import load_item_profile, decode_item_prefix
+            item_profile=load_item_profile(replay.header.client_version,replay.header.protocol_digest)
         if args.experimental_movement:
             from movement_decoder import load_profile, decode_movement
             map_id = reference['mapId'] if reference else args.map_id
@@ -226,18 +229,26 @@ def analyze(args):
         if profile and profile['protocol']!=replay.header.protocol_digest:
             raise ValueError('Death decoder protocol digest mismatch.')
         death_rows=[];entities=set()
-        sample_file = None; movement_counts = Counter()
+        sample_file = None; movement_counts = Counter(); item_counts = Counter()
         with ExitStack() as stack:
+            if item_profile:
+                item_file=stack.enter_context((output/'replay-item-updates.jsonl').open('w',encoding='utf8'))
             if movement_profile:
                 movement_file = stack.enter_context((output/'replay-movement-paths.jsonl').open('w',encoding='utf8'))
             if args.window:
                 sample_file = stack.enter_context((output/'raw-window.jsonl').open('w',encoding='utf8'))
-            for block in replay.iter_blocks(include_payload=bool(args.window or movement_profile),verify=True):
+            for block in replay.iter_blocks(include_payload=bool(args.window or movement_profile or item_profile),verify=True):
                 counts[block.packet_id]+=1
                 stream_counts[block.stream]+=1
                 lengths[block.packet_id]+=block.payload_length
                 first=min(first,block.timestamp);last=max(last,block.timestamp)
                 if block.stream=='gameChunk':
+                    if item_profile and block.packet_id==item_profile['opcode']:
+                        fields=decode_item_prefix(block.payload,item_profile)
+                        item_counts['updates']+=1
+                        item_file.write(json.dumps({'kind':'ITEM_UPDATE_PREFIX','provenance':'rofl_payload_exact_build_profile',
+                            'confidence':'experimental','timestampSeconds':block.timestamp,'packetId':block.packet_id,
+                            'entityId':block.param,**fields})+'\n')
                     if movement_profile and block.packet_id==movement_profile['opcode']:
                         paths=decode_movement(block.payload,movement_profile)
                         movement_counts['packets']+=1
@@ -278,6 +289,11 @@ def analyze(args):
                 'movement':{'kind':'waypoint_paths','counts':dict(movement_counts),'mapId':11,
                     'continuousPositions':False,'participantIdentityAssigned':False,'profile':movement_profile['schema']},
                 'spellCastsDecoded':False})
+        if item_profile:
+            summary['gameplayDecoding'].update({'status':'limited_experimental','itemUpdatesDecoded':True,
+                'items':{'counts':dict(item_counts),'scope':'item ID, gold balance at update time, and an unverified numeric field from a partial packet prefix',
+                    'transactionsClassified':False,'participantIdentityAssigned':False,'payloadFullyDecoded':False}})
+            summary['gameplayDecoding']['decodedGameplayEvents']=len(decoded)+movement_counts['paths']+item_counts['updates']
         write_json(output/'summary.json',summary)
         write_json(output/'participants.json',list(replay.metadata.participants))
         write_json(output/'packet-histogram.json',histogram)
@@ -291,13 +307,16 @@ def analyze(args):
                 pid=reference['player']['participantId']
                 deaths=[e for e in reference['events'] if e['event']['type']=='CHAMPION_KILL' and e['event']['victimId']==pid]
         lines=[f'# Replay Lab: {replay.path.stem}','',f'Build **{replay.header.client_version}**. Parsed **{len(chunks)} chunks** and **{sum(stream_counts.values()):,} transport records** through {format_time(last)}.',
-            '', '**Gameplay decoder status: '+('limited experimental' if profile or movement_profile else 'unavailable')+'.** Individual spell casts, health and cooldowns remain undecoded.',
+            '', '**Gameplay decoder status: '+('limited experimental' if profile or movement_profile or item_profile else 'unavailable')+'.** Individual spell casts, health and cooldowns remain undecoded.',
             '', 'All chunk sizes and the final container boundary were checked. The cryptographic replay signature was not verified. Original replay files are opened read-only.',
             '', '## Extracted data', '', '- Final participant stats are in `participants.json`.', '- Timestamp and opcode counts are in `summary.json` and `packet-histogram.json`.',
             '- Timing candidates are research hypotheses, not recovered gameplay events.']
         if movement_profile:
             lines += ['',f'Experimental movement profile decoded **{movement_counts["paths"]:,} waypoint paths** from **{movement_counts["packets"]:,} packets**.',
                 'Paths include NPCs. Entity IDs are preserved without assigning champion identities. These are waypoint updates, not a complete continuous position trace.']
+        if item_profile:
+            lines += ['',f'Experimental item profile decoded **{item_counts["updates"]} item-update prefixes**.',
+                'Item IDs and gold balances at update time are recovered. A second numeric field has no established meaning. Updates are not classified as purchases; suffix fields and participant identity remain undecoded.']
         if profile:
             lines+=['',f'Experimental death-marker profile produced **{len(decoded)} records** from replay timestamps and victim entities. Counts match all ten participants\' final death totals.',
                 'Identity mapping uses an empirical allocation/order rule. These checks do not prove the meaning of other payload fields.']
@@ -330,6 +349,7 @@ def main(argv=None):
     p.add_argument('--tolerance',type=float,default=0.15)
     p.add_argument('--experimental-deaths',action='store_true',help='Enable the narrow, empirically validated death-marker profile.')
     p.add_argument('--experimental-movement',action='store_true',help='Decode experimental 16.21 waypoint paths; requires map 11 from --map-id or API match.')
+    p.add_argument('--experimental-items',action='store_true',help='Decode partial 16.21 item-update prefixes, without classifying purchases or assigning identity.')
     p.add_argument('--map-id',type=int,help='Explicit map assertion for movement decoding without API match data; only 11 is supported.')
     args=parser.parse_args(argv)
     if args.command=='doctor':
@@ -342,7 +362,8 @@ def main(argv=None):
     if args.command=='capabilities':
         print(json.dumps({'version':VERSION,'containerBuilds':list(LAYOUTS),'verifiedGameplayDecoders':[],
             'experimentalProfiles':{v:{'kind':'champion_death_marker','scope':'timestamp and victim entity; metadata order mapping checked against death totals'} for v in DEATH_PROFILES},
-            'experimentalMovement':{'build':'16.21.829.8620','mapId':11,'kind':'waypoint_paths','continuousPositions':False,'participantIdentityAssigned':False},'offline':True},indent=2));return 0
+            'experimentalMovement':{'build':'16.21.829.8620','mapId':11,'kind':'waypoint_paths','continuousPositions':False,'participantIdentityAssigned':False},
+            'experimentalItems':{'build':'16.21.829.8620','kind':'item_update_prefix','transactionsClassified':False,'payloadFullyDecoded':False},'offline':True},indent=2));return 0
     if not math.isfinite(args.tolerance) or not 0<args.tolerance<=1:
         parser.error('--tolerance must be greater than zero and at most one second.')
     if args.window and (not all(math.isfinite(x) for x in args.window) or args.window[0]<0 or args.window[1]<args.window[0]):
