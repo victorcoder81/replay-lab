@@ -46,4 +46,4 @@ The bounded offline oracle supplies a synthetic guest reader-context flag requir
 
 ## Cast completeness
 
-Local research extracts MF cast observations, but counts still fall short of final metadata for some abilities. That gap is explicitly retained. Neither missing cast records nor an elapsed estimated cooldown are evidence that a player had a spell available.
+Version 0.7.0 adds a reusable optional cast reader and a counter/resource evidence audit. Final counters and cast observations have unexplained differences of either sign; those differences alone do not prove missing events. See [RESOURCE_AND_SPELL_STATE.md](RESOURCE_AND_SPELL_STATE.md). An elapsed estimated cooldown is not proof of castability.

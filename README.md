@@ -1,6 +1,6 @@
 # Replay Lab
 
-An offline research tool for League of Legends ROFL v2 files, with experimental death markers, 16.21 movement paths, item-update IDs, gold-balance samples and sparse champion health, explicit cooldown updates and experimental team visibility.
+An offline research tool for League of Legends ROFL v2 files, with experimental death markers, 16.21 movement paths, item-update IDs, gold-balance samples, sparse champion health/resources/shields, skill ranks, charge and cooldown reports, team visibility and optional local cast observations.
 
 Replay Lab parses the replay container, extracts end-of-game metadata, exports raw record windows and compares packet timestamps with saved Riot Match-v5 events. Its death-marker profiles recover a timestamp and victim entity/identity from replay records without requiring a running game client or an API connection.
 
@@ -14,12 +14,18 @@ Replay Lab parses the replay container, extracts end-of-game metadata, exports r
 python replay_lab.py analyze /path/to/EUW1-1234567890.rofl --experimental-health --out ./runs/health
 ```
 
-Health rows contain only changed/present fields; an absent value is never zero. The tool checks champion allocation against skill markers and all ten final death totals before applying the champion schema. NPC health, shields and continuous health remain unavailable. Team visibility is available separately with limited visual validation.
+Health rows contain only changed/present fields; an absent value is never zero. The tool checks champion allocation against skill markers and all ten final death totals before applying the champion schema. NPC health and continuous health remain unavailable. Universal shield reports are available separately through `--experimental-state`; other shield types remain unverified. Team visibility is available separately with limited visual validation.
 
 **Version 0.6.0 adds explicit cooldown timer reports and experimental team-specific champion visibility.** Native-reader checks cover 9,342 cooldown records and 3,499 visibility reports; the visible/hidden interpretation has one human-checked replay sequence. See [COOLDOWNS_AND_VISION.md](COOLDOWNS_AND_VISION.md) for limits, especially spell castability and player knowledge.
 
 ```sh
 python replay_lab.py analyze /path/to/EUW1-1234567890.rofl --experimental-cooldowns --experimental-vision --out ./runs/context
+```
+
+**Version 0.7.0 adds primary resources, universal shields, learned skill ranks, explicit charges and optional bounded cast decoding.** The cast reader needs an exact locally recovered image; the other new decoders run standalone. Cast-counter differences are audited rather than labeled as proven missing events. See [RESOURCE_AND_SPELL_STATE.md](RESOURCE_AND_SPELL_STATE.md).
+
+```sh
+python replay_lab.py analyze /path/to/EUW1-1234567890.rofl --experimental-state --experimental-skills --experimental-charges --out ./runs/state
 ```
 
 ## Capabilities
@@ -29,6 +35,8 @@ python replay_lab.py analyze /path/to/EUW1-1234567890.rofl --experimental-cooldo
 - End-of-game participant statistics, items, runes and spell-use totals.
 - Experimental champion-death timestamps and victim identities.
 - Experimental movement entity IDs, speeds and waypoints; no executable or API key needed.
+- Experimental primary resource, universal shield, learned skill rank and charge reports.
+- Optional emulated cast observations using an exact user-supplied recovered image.
 - Experimental explicit cooldown timer reports; complete spell readiness is not inferred.
 - Experimental team-specific champion visibility reports, with unknown initial state and limited visual validation.
 - Experimental sparse champion current/max health, with missing fields preserved.
@@ -118,6 +126,11 @@ Add `--window 1709 1711` to export raw game-chunk records between 28:29 and 28:3
 | `replay-death-markers.jsonl` | Experimental replay-derived death markers, when enabled and checks pass |
 | `replay-movement-paths.jsonl` | Experimental replay-derived entity IDs, speeds and waypoint paths, when enabled |
 | `replay-item-updates.jsonl` | Partial item-update records and gold-balance samples, when enabled; transaction types remain unknown |
+| `replay-champion-state.jsonl` | Sparse primary resource, universal shield and health updates |
+| `replay-skill-levels.jsonl` | Skill-learning slot/rank reports |
+| `replay-charge-updates.jsonl` | Explicit charge-count and recharge reports |
+| `replay-cast-observations.jsonl` | Optional bounded-emulation cast observations |
+| `cast-evidence-audit.json` | Counter differences and temporal resource corroboration, when casts and state are enabled |
 | `replay-cooldown-updates.jsonl` | Explicit cooldown timer reports; castability remains unknown |
 | `replay-team-visibility.jsonl` | Experimental champion visibility reports for a specific team |
 | `replay-health-updates.jsonl` | Sparse champion current/max health updates, when enabled |
@@ -134,7 +147,7 @@ Timing coincidence is not proof of packet semantics. The correlation report incl
 python -m unittest discover -s . -p "test_*.py" -v
 ```
 
-Sixty-four automated tests cover transport, executable preflight, death markers, movement, sparse health, cooldown reports, team visibility, item prefixes, gold/numeric selectors, malformed data and output preservation. Fixtures contain no personal replay payloads or client code.
+Eighty-four automated tests cover transport, executable preflight, death markers, movement, sparse health, cooldown reports, team visibility, resources, skill ranks, charge reports, cast guards/audits, item prefixes, gold/numeric selectors, malformed data and output preservation. Fixtures contain no personal replay payloads or client code.
 
 The 16.21 movement decoder parsed **31,033 packets into 113,425 paths** on one local replay. An independent API comparison found **140/141** first waypoints within 100 game units at timestamps within 0.25 seconds; median distance was 19.24 units. The outlier crosses a likely respawn boundary. See [VALIDATION.md](VALIDATION.md) for scope and native-oracle checks.
 

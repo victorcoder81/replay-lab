@@ -2,7 +2,7 @@
 
 ## Automated tests
 
-64 tests exercise container and framing behavior, malformed inputs, output preservation, reference-data mismatch, empirical entity-generation mapping, death-count verification, executable preflight, movement, item-prefix, sparse-health, cooldown-report and team-visibility decoding.
+84 tests exercise container and framing behavior, malformed inputs, output preservation, reference-data mismatch, empirical entity-generation mapping, death-count verification, executable preflight, movement, item-prefix, sparse-health, cooldown-report and team-visibility decoding.
 
 The fixtures are synthetic. They contain no real players, replay payloads or game executable code.
 
@@ -59,3 +59,7 @@ All 27,366 native state vectors across two full replays match the standalone tra
 ## Cooldown and visibility, version 0.6.0
 
 All 9,342 cooldown records on three replays match the native scalar outputs and consume the full payload. All 3,499 champion visibility reports on two replays match the native team-byte output. Visible/hidden interpretation additionally has one human-confirmed sequence under blue-team fog of war on the independent MF win. These checks have different scopes: native scalar agreement does not establish every field's meaning, and one visual sequence does not validate every vision mechanic. Fourteen additional synthetic tests bring the total to 64. See [COOLDOWNS_AND_VISION.md](COOLDOWNS_AND_VISION.md).
+
+## State and cast evidence, version 0.7.0
+
+Primary resource/max resource were independently checked against 240 champion-minute API snapshots each. All 128 skill-up slots/timestamps and ranks agree with API events and cumulative learning. Charge decoding matches all six native fields on 1,323 records. The reusable bounded cast reader matches all selected fields on 7,098 observations and rejects seven truncated payloads without corrupting subsequent decodes. Twenty new synthetic tests bring the suite to 84. See [RESOURCE_AND_SPELL_STATE.md](RESOURCE_AND_SPELL_STATE.md) for exact counts, scope, counter mismatches and corrected field labels.

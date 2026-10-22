@@ -1,5 +1,7 @@
 # Gameplay decoder status
 
+Version **0.7.0** adds standalone primary-resource, universal-shield, skill-learning and charge reports, plus an optional bounded emulation adapter for cast observations using the exact locally recovered image. An unexplained final-counter difference is no longer labeled as a proven missing cast. A previously hypothesized rank field is kept raw; verified ranks come from skill-up records. See [RESOURCE_AND_SPELL_STATE.md](RESOURCE_AND_SPELL_STATE.md).
+
 Version **0.6.0** adds explicit cooldown timer reports and experimental team-specific champion visibility. See [COOLDOWNS_AND_VISION.md](COOLDOWNS_AND_VISION.md). The team-byte format matches native output on 3,499 champion reports, and one independent visual sequence confirms the visible/hidden interpretation. Complete spell castability is still unknown; zero timers are not treated as proof of availability.
 
 Version **0.5.0** adds standalone sparse champion health. See [HEALTH_DECODING.md](HEALTH_DECODING.md). Spell-cast fields are recovered in local research, but their coverage is incomplete; no complete spell-availability decoder is included. Experimental visibility reports were added in version 0.6.0.
@@ -36,7 +38,7 @@ Synthetic Windows API responses and bounded guest memory were used. Instrumentat
 1. Validate movement on additional independent replays and entity lifecycle cases.
 2. Establish safe participant identity tracking across allocation changes and clones.
 3. Validate path interpolation around stops, dashes, teleports, deaths and respawns before claiming continuous positions.
-4. Recover spell deserializers and consumer semantics, including cast variants and targets.
+4. Extend the optional cast reader to standalone decoding and establish remaining consumer semantics, cast variants and targets.
 5. Derive separate profiles for other builds and maps; never relabel an older profile.
 
 The compact inner path format is adapted from [RoflLens](https://github.com/ss26367098/rofllens), with MIT license/notices preserved. Factory-discovery research also consulted [rofl-parser](https://github.com/shyunku-libraries/rofl-parser). Riot's [Replay API](https://developer.riotgames.com/docs/lol#replay-api) supplies playback/render controls, not a replacement position/spell event stream.
